@@ -1,0 +1,4 @@
+finlab==2.0.14
+pandas>=2.2,<4
+pyarrow>=15
+requests>=2.31

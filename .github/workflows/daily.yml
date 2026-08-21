@@ -1,0 +1,62 @@
+name: 分點日報 → Telegram
+
+on:
+  schedule:
+    # FinLab 分點資料每交易日 19:00~19:02 (台灣時間) 更新,留一小時緩衝
+    # 12:00 UTC = 20:00 Asia/Taipei,週一~週五(是否為交易日由腳本用收盤資料判斷)
+    - cron: "0 12 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      brokers:
+        description: "分點名稱(逗號分隔),留空用預設"
+        required: false
+        default: ""
+      force:
+        description: "略過交易日/資料新鮮度檢查"
+        type: boolean
+        default: false
+      dry_run:
+        description: "只印訊息不推播"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: broker-daily
+  cancel-in-progress: false
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run daily broker report
+        env:
+          # FinLab headless 憑證(FINLAB_API_TOKEN 已於 2026/08/01 淘汰)
+          # 用 `python -m finlab token --env` 在本機產生後設為 repo secrets
+          FINLAB_REFRESH_TOKEN: ${{ secrets.FINLAB_REFRESH_TOKEN }}
+          FINLAB_SESSION_ID: ${{ secrets.FINLAB_SESSION_ID }}
+          FINLAB_API_KEY: ${{ secrets.FINLAB_API_KEY }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          BROKERS: ${{ github.event.inputs.brokers || vars.BROKERS || '凱基-三多' }}
+          TOP_N: ${{ vars.TOP_N || '10' }}
+          SELL_N: ${{ vars.SELL_N || '5' }}
+          LOOKBACK: ${{ vars.LOOKBACK || '5' }}
+          FORCE: ${{ github.event.inputs.force == 'true' && '1' || '' }}
+          DRY_RUN: ${{ github.event.inputs.dry_run == 'true' && '1' || '' }}
+        run: python broker_daily.py
